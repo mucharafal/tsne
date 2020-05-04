@@ -1,6 +1,10 @@
 #include <iostream>
+#include <fstream>
 #include <math.h>
 #include <functional>
+#include <sstream>
+#include <string>
+#include <list>
 #define DELTA 0.00001
 
 using namespace std;
@@ -227,17 +231,133 @@ double** calculateGradient(Array p, Array q, Array y) {
     return gradient;
 }
 
-Array fitTSNE(Array points, int stepsNumber, double perplexity) {
+Array fitTSNE(Array points, int stepsNumber, double perplexity, double learning_rate) {
     // fit lower dimensional space to higher
+    int n = points.getPointsNumber();
+    
+    double initial_momentum = 0.5;
+    double final_momentum = 0.8;
+    int eta = 500;
+    double min_gain = 0.01;
+    Array Y(n, 2);  // = RAND?;
+    Array M(n, 2);
+
+    cout << "Probabilities" << endl;
+    Array probabilities = similaritySNE(points, perplexity);
+    cout << "Symmetrize" << endl;
+    Array P = symmetrizeProbabilities(probabilities);
+
+
+    for(int step = 0; step < stepsNumber; step++){
+        cout << "Step: " << step + 1 << endl;
+
+        Array Q = similarityTSNE(Y);
+        double** gradient = calculateGradient(P, Q, Y);
+
+        //   Y_1 = Y + (momentum * M) + (learning_rate * gradient);
+        Array Y_1(Y.getPointsNumber(), Y.getDimensions());
+        double momentum = step < 20 ? initial_momentum : final_momentum;
+        for(int i = 0; i < n; i++){
+            for(int j = 0; j < n; j++){
+                Y_1[i][j] = Y[i][j] + (learning_rate * gradient[i][j]) + (momentum * M[i][j]);
+            }
+        }
+
+        //   M = Y_1 - Y;
+        for(int i = 0; i < n; i++){
+            for(int j = 0; j < n; j++){
+                M[i][j] = Y_1[i][j] - Y[i][j];
+            }
+        }
+
+        Y = Y_1;
+
+
+        // Print iteration error
+        if ((step + 1) % 10 == 0){
+            double C = 0.0;
+
+            for(int i = 0; i < n; i++){
+                for(int j = 0; j < n; j++){
+                    C += P[i][j] * log(P[i][j] / Q[i][j]);
+                }
+            }
+
+            cout << "Iteration " << step + 1 << ": error is " << C << endl;
+        }
+    }
+
+    return Y;
 }
+
+Array readInData(string csv_filename){
+    // Load points vectors from file
+
+    ifstream file;
+    file.open(csv_filename);
+
+    int dimensions = 0;
+
+    if(file.good()){
+        string header_line;
+        getline(file, header_line, '\n');
+
+        istringstream header_iss(header_line);
+        string column_name;
+
+        while (getline(header_iss, column_name, ',')){
+            dimensions++;
+        }
+    }
+
+    list<double*> points;
+
+    while(file.good()){
+        string point_line;
+        getline(file, point_line, '\n');
+
+        if(point_line.empty()){
+            // Skip empty lines
+            continue;
+        }
+
+        istringstream iss(point_line);
+        string val;
+
+        double* point = new double[dimensions];
+        int i = 0;
+
+        // Split line using ',' as delimiter
+
+        while (getline(iss, val, ',')){
+            point[i++] = stod(val);
+        }
+
+        points.push_back(point);
+    }
+    file.close();
+
+    // Load points vectors into Array
+
+    Array result(points.size(), dimensions);
+
+    list<double*>::iterator it = points.begin();
+    for (int i = 0; i < points.size(); i++){
+        for(int j = 0; j < dimensions; j++){
+            result[i][j] = (*it)[j];
+        }
+        
+        it++;
+    }
+
+    return result;
+}
+
 
 int main() {
 
-    Array points = readInData();
-
-    fitTSNE(points);
-
-    cout << "tSNE!" << endl;
+    Array points = readInData("test.csv");
+    fitTSNE(points, 500, 30, 0.5);
 
     return 0;
 }
