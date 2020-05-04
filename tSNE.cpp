@@ -191,8 +191,40 @@ Array similarityTSNE(Array y) {
     return q;
 }
 
-double* calculateGradient(...) {
-    //calculate gradient for lower dimension
+double** calculateGradient(Array p, Array q, Array y) {
+    int n = p.getPointsNumber();
+    Array distances = calculateSquareEuclidianDistances(y);
+    Array p_minus_q(n, n);
+
+    double** gradient = new double*[n];             // Allocation
+
+    for(int i = 0; i < n; i++){
+        for(int j = 0; j < n; j++){
+            p_minus_q[i][j] = p[i][j] - q[i][j];
+        }
+    }
+
+    for(int i = 0; i < n; i++){
+        double gradient_i[n] = { 0.0 };
+        for(int j = 0; j < n; j++){
+            double* subtracted_vec = substractVectors(y[i], y[j], n);       // Allocation
+
+            // gradient_i = sum(j=0..n) of (4 * P-Q[i][j] * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
+            // below we just perform it element-wise, since y[i] and y[j] are vectors
+            for(int k = 0; k < n; k++){
+                subtracted_vec[k] *= 4;
+                subtracted_vec[k] *= p_minus_q[i][j];
+                subtracted_vec[k] *= 1 / (1 + distances[i][j]);
+                gradient_i[k] += subtracted_vec[k];
+            }
+
+            delete subtracted_vec;
+        }
+
+        gradient[i] = gradient_i;
+    }
+
+    return gradient;
 }
 
 Array fitTSNE(Array points, int stepsNumber, double perplexity) {
