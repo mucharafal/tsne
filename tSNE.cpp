@@ -151,8 +151,44 @@ Array similaritySNE(Array points, double perplexity) {
     return p;
 }
 
-Array similarityTSNE(...) {
+Array symmetrizeProbabilities(Array probabilities) {
+    int n = probabilities.getPointsNumber();
+
+    Array result(n, n);
+
+    for(int i = 0; i < n; i++){
+        for(int j = 0; j < n; j++){
+            result[i][j] = (probabilities[i][j] + probabilities[j][i]) / 2 * n;
+        }
+    }
+
+    return result;
+}
+
+Array similarityTSNE(Array y) {
     // array of similarities for lower dimension in tSNE
+    int n = y.getPointsNumber();
+    Array distances = calculateSquareEuclidianDistances(y);
+    Array q(n, n);
+
+    double denumerator = 0.0;
+
+    for(int k = 0; k < n; k++) {
+        for(int l = 0; l < n; l++){
+            if(k != l) {
+                denumerator += 1 / (1 + distances[k][l]);
+            }
+        }
+    }
+
+    for(int i = 0; i < n; i++){
+        for(int j = 0; j < n; j++){
+            double numerator = 1 / (1 + distances[i][j]);
+            q[i][j] = numerator / denumerator;
+        }
+    }
+
+    return q;
 }
 
 double* calculateGradient(...) {
