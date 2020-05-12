@@ -144,7 +144,7 @@ Array similarityTSNE(Array y) {
     for(int k = 0; k < n; k++) {
         for(int l = 0; l < n; l++){
             if(k != l) {
-                denumerator += 1 / (1 + distances[k][l]);
+                denumerator += exp(-distances[k][l]);
             }
         }
     }
@@ -152,8 +152,13 @@ Array similarityTSNE(Array y) {
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
             if(i != j) {
-                double numerator = 1 / (1 + distances[i][j]);
+                double numerator = exp(-distances[i][j]);
+                if(numerator == 0) {
+                    cout << "Numberator for i: " << i << " and j: " << j << " equal to zero" << endl;
+                }
                 q[i][j] = numerator / denumerator;
+            } else {
+                q[i][j] = 0;
             }
         }
     }
@@ -257,6 +262,7 @@ Array fitTSNE(Array points, int stepsNumber, double perplexity, double learning_
             for(int i = 0; i < n; i++){
                 for(int j = 0; j < n; j++){
                     if(i != j) {
+                        cout << "P[" << i << "][" << j << "] = " << P[i][j] << " Q: " << Q[i][j] << endl; 
                         C += P[i][j] * log(P[i][j] / Q[i][j]);
                     }
                 }
@@ -336,7 +342,14 @@ Array readInData(string csv_filename){
 int main() {
 
     Array points = readInData("test.csv");
-    fitTSNE(points, 500, 30, 0.5);
+    Array result = fitTSNE(points, 500, 30, 0.5);
+
+    for(int i = 0;i < result.getPointsNumber();i++) {
+        for(int j = 0;j < result.getDimensions();j++) {
+            cout << result[i][j] << " ";
+        }
+        cout << endl;
+    }
 
     return 0;
 }
