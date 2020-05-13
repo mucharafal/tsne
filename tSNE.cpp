@@ -46,28 +46,33 @@ Array calculateSquareEuclidianDistances(Array points) {
 
 double pjiFromSigma(int i, int j, Array distances, double sigma) {
     double x = exp(-distances[i][j] / (2 * sigma * sigma));
+    cout << -distances[i][j] / (2 * sigma * sigma) << endl;
     double y = 0;
     for(int k = 0;k < distances.getPointsNumber();k++) {
         if(k != i) {
             y += exp(-distances[i][k] / (2 * sigma * sigma));
         }
     }
+    // cout << "Pji " << x/y << " because x = " << x << " and y = " << y << " sigma: " << sigma << " i: " << i << " j: " << j << " Distance: " << distances[i][j] << endl;
     return x/y;
 }
 
 double perplexityFromSigma(int i, Array distances, double sigma) {
     double sum = 0;
     for(int j = 0;j < distances.getPointsNumber();j++) {
-        double pji = pjiFromSigma(i, j, distances, sigma);
-        sum += pji * log2(pji);
+        if(j != i) {
+            double pji = pjiFromSigma(i, j, distances, sigma);
+            sum += pji * log2(pji);
+        }
     }
-    return -sum;
+    cout << "Perplexity for i = " << i << " is equal " << pow(2, -sum) << endl;
+    return pow(2, -sum);
 };
 
 double findSigma(int i, Array distances, double perplexity) {
     // This part is a bit complicated. I am not sure, about perplexity function plot
-    double start = 0.0001;
-    double end = 100;
+    double start = 0.1;
+    double end = 100000;
     double initSearchStep = 0.5;
     bool isGrowing = perplexityFromSigma(i, distances, start) < perplexityFromSigma(i, distances, end);
     if(perplexityFromSigma(i, distances, start) > perplexity && perplexityFromSigma(i, distances, end) > perplexity) {
@@ -78,7 +83,7 @@ double findSigma(int i, Array distances, double perplexity) {
         cout << "Cannot match, too big" << endl;
     }
     double step = 1;
-    while(perplexityFromSigma(i, distances, ((start + end) / 2 - perplexity) > DELTA) && step > DELTA) {
+    while((perplexityFromSigma(i, distances, ((start + end) / 2)) - perplexity > DELTA) && step > DELTA) {
         double middle = (start + end) / 2;
         double perplexityForMiddle = perplexityFromSigma(i, distances, middle);
         if(perplexityForMiddle < perplexity) {
@@ -108,6 +113,7 @@ Array similaritySNE(Array points, double perplexity) {
 
     for(int i = 0;i < pointsNumber;i++) {
         double sigma = findSigma(i, distances, perplexity);
+        cout << "Sigma[" << i << "]: " << sigma << endl;
         for(int j = 0;j < pointsNumber;j++) {
             if(j != i) {
                 p[j][i] = pjiFromSigma(i, j, distances, sigma);
@@ -123,10 +129,12 @@ Array symmetrizeProbabilities(Array probabilities) {
     int n = probabilities.getPointsNumber();
 
     Array result(n, n);
-
+    cout << "Probabilities: " << endl;
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
-            result[i][j] = (probabilities[i][j] + probabilities[j][i]) / 2 * n;
+            cout << i << " " << j << " " << probabilities[i][j] << " " << probabilities[j][i];
+            result[i][j] = (probabilities[i][j] + probabilities[j][i]) / (2 * n);
+            cout << " " << result[i][j] << endl;
         }
     }
 
@@ -233,6 +241,13 @@ Array fitTSNE(Array points, int stepsNumber, double perplexity, double learning_
     Array probabilities = similaritySNE(points, perplexity);
     Array P = symmetrizeProbabilities(probabilities);
 
+    //init with random values
+    for(int i = 0;i < n;i++) {
+        for(int j = 0;j < 2;j++) {
+            Y[i][j] = 0.1 * rand() / RAND_MAX;
+        }
+    }
+
 
     for(int step = 0; step < stepsNumber; step++){
 
@@ -244,6 +259,7 @@ Array fitTSNE(Array points, int stepsNumber, double perplexity, double learning_
         for(int i = 0; i < n; i++){
             for(int j = 0; j < 2; j++){
                 Y_1[i][j] = Y[i][j] + (learning_rate * gradient[i][j]) + (momentum * M[i][j]);
+         
             }
         }
         //   M = Y_1 - Y;
