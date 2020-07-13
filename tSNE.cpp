@@ -148,7 +148,7 @@ MATRIX similarityTSNE(MATRIX y) {
             }
         }
     }
-    std::cout << "Denumerator: " << denumerator << std::endl;
+    // std::cout << "Denumerator: " << denumerator << std::endl;
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
             if(i != j) {
@@ -171,15 +171,15 @@ MATRIX calculateGradient(MATRIX p, MATRIX q, MATRIX y) {
     int m = y.size2();
     MATRIX distances = calculateSquareEuclidianDistances(y);
 
-    std::cout << "Distances calcs; dims: " << distances.size1() << "," << distances.size2() << "\n";
+    // std::cout << "Distances calcs; dims: " << distances.size1() << "," << distances.size2() << "\n";
 
     MATRIX p_minus_q = p - q;
 
-    std::cout << "p_minus_q calcs; dims: " << p_minus_q.size1() << "," << p_minus_q.size2() << "\n";
+    // std::cout << "p_minus_q calcs; dims: " << p_minus_q.size1() << "," << p_minus_q.size2() << "\n";
 
     MATRIX gradient(n, m);
 
-    std::cout << "gradient calcs; dims: " << gradient.size1() << "," << gradient.size2() << "\n";
+    // std::cout << "gradient calcs; dims: " << gradient.size1() << "," << gradient.size2() << "\n";
 
     for(int i = 0; i < n; i++){   
         for(int j = 0; j < i; j++){
@@ -240,18 +240,18 @@ MATRIX fitTSNE(MATRIX points, int stepsNumber, double perplexity, double learnin
     
 
     for(int step = 0; step < stepsNumber; step++){
-        std::cout << "Step: " << step << "\n";
+        // std::cout << "Step: " << step << "\n";
         MATRIX Q = similarityTSNE(Y);
-        std::cout << "Q calcs\n";
+        // std::cout << "Q calcs\n";
         MATRIX gradient = calculateGradient(P, Q, Y);
-        std::cout << "Gradient calcs\n";
+        // std::cout << "Gradient calcs\n";
         //   Y_1 = Y + (momentum * M) + (learning_rate * gradient);
         MATRIX Y_1(Y.size1(), Y.size2());
         double momentum = step < 20 ? initial_momentum : final_momentum;
         for(int i = 0; i < n; i++){
             for(int j = 0; j < 2; j++){
-                Y_1(i, j) = Y(i, j) + (learning_rate * gradient(i, j)) + (momentum * M(i, j));
-         
+                Y_1(i, j) = Y(i, j) - (learning_rate * gradient(i, j)) + (momentum * M(i, j));
+                // std::cout<<"Step: " << (learning_rate * gradient(i, j)) + (momentum * M(i, j)) << "\n";
             }
         }
         //   M = Y_1 - Y;
@@ -350,8 +350,8 @@ MATRIX readInData(std::string csv_filename){
 
 int main() {
 
-    MATRIX points = readInData("test.csv");
-    MATRIX result = fitTSNE(points, 500, 5, 0.1);
+    MATRIX points = readInData("processed_mnist.csv");
+    MATRIX result = fitTSNE(points, 500, 5, 1);
 
     for(int i = 0;i < result.size1();i++) {
         for(int j = 0;j < result.size2();j++) {
