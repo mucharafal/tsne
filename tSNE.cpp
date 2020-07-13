@@ -46,7 +46,7 @@ Array calculateSquareEuclidianDistances(Array points) {
 
 double pjiFromSigma(int i, int j, Array distances, double sigma) {
     double x = exp(-distances[i][j] / (2 * sigma * sigma));
-    cout << -distances[i][j] / (2 * sigma * sigma) << endl;
+    // cout << -distances[i][j] / (2 * sigma * sigma) << endl;
     double y = 0;
     for(int k = 0;k < distances.getPointsNumber();k++) {
         if(k != i) {
@@ -65,7 +65,7 @@ double perplexityFromSigma(int i, Array distances, double sigma) {
             sum += pji * log2(pji);
         }
     }
-    cout << "Perplexity for i = " << i << " is equal " << pow(2, -sum) << endl;
+    // cout << "Perplexity for i = " << i << " is equal " << pow(2, -sum) << endl;
     return pow(2, -sum);
 };
 
@@ -113,7 +113,7 @@ Array similaritySNE(Array points, double perplexity) {
 
     for(int i = 0;i < pointsNumber;i++) {
         double sigma = findSigma(i, distances, perplexity);
-        cout << "Sigma[" << i << "]: " << sigma << endl;
+        // cout << "Sigma[" << i << "]: " << sigma << endl;
         for(int j = 0;j < pointsNumber;j++) {
             if(j != i) {
                 p[j][i] = pjiFromSigma(i, j, distances, sigma);
@@ -129,12 +129,12 @@ Array symmetrizeProbabilities(Array probabilities) {
     int n = probabilities.getPointsNumber();
 
     Array result(n, n);
-    cout << "Probabilities: " << endl;
+    // cout << "Probabilities: " << endl;
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
-            cout << i << " " << j << " " << probabilities[i][j] << " " << probabilities[j][i];
+            // cout << i << " " << j << " " << probabilities[i][j] << " " << probabilities[j][i];
             result[i][j] = (probabilities[i][j] + probabilities[j][i]) / (2 * n);
-            cout << " " << result[i][j] << endl;
+            // cout << " " << result[i][j] << endl;
         }
     }
 
@@ -152,17 +152,18 @@ Array similarityTSNE(Array y) {
     for(int k = 0; k < n; k++) {
         for(int l = 0; l < n; l++){
             if(k != l) {
+                // cout << "Distance: " << distances[k][l] << endl;
                 denumerator += exp(-distances[k][l]);
             }
         }
     }
-
+    cout << "Denumerator: " << denumerator << endl;
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
             if(i != j) {
                 double numerator = exp(-distances[i][j]);
                 if(numerator == 0) {
-                    cout << "Numberator for i: " << i << " and j: " << j << " equal to zero" << endl;
+                    // cout << "Numerator for i: " << i << " and j: " << j << " equal to zero" << endl;
                 }
                 q[i][j] = numerator / denumerator;
             } else {
@@ -245,6 +246,7 @@ Array fitTSNE(Array points, int stepsNumber, double perplexity, double learning_
     for(int i = 0;i < n;i++) {
         for(int j = 0;j < 2;j++) {
             Y[i][j] = 0.1 * rand() / RAND_MAX;
+            M[i][j] = 0;  
         }
     }
 
@@ -278,7 +280,7 @@ Array fitTSNE(Array points, int stepsNumber, double perplexity, double learning_
             for(int i = 0; i < n; i++){
                 for(int j = 0; j < n; j++){
                     if(i != j) {
-                        cout << "P[" << i << "][" << j << "] = " << P[i][j] << " Q: " << Q[i][j] << endl; 
+                        // cout << "P[" << i << "][" << j << "] = " << P[i][j] << " Q: " << Q[i][j] << endl; 
                         C += P[i][j] * log(P[i][j] / Q[i][j]);
                     }
                 }
@@ -358,7 +360,7 @@ Array readInData(string csv_filename){
 int main() {
 
     Array points = readInData("test.csv");
-    Array result = fitTSNE(points, 500, 30, 0.5);
+    Array result = fitTSNE(points, 500, 30, 0.1);
 
     for(int i = 0;i < result.getPointsNumber();i++) {
         for(int j = 0;j < result.getDimensions();j++) {
