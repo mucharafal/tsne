@@ -167,17 +167,19 @@ MATRIX similarityTSNE(MATRIX y) {
 }
 
 MATRIX calculateGradient(MATRIX p, MATRIX q, MATRIX y) {
-    int n = p.size1();
+    int n = y.size1();
+    int m = y.size2();
     MATRIX distances = calculateSquareEuclidianDistances(y);
-    MATRIX p_minus_q(n, n);
 
-    MATRIX gradient(n, n);      //????
+    std::cout << "Distances calcs; dims: " << distances.size1() << "," << distances.size2() << "\n";
 
-    for(int i = 0; i < n; i++){
-        for(int j = 0; j < n; j++){
-            p_minus_q(i, j) = p(i, j) - q(i, j);
-        }
-    }
+    MATRIX p_minus_q = p - q;
+
+    std::cout << "p_minus_q calcs; dims: " << p_minus_q.size1() << "," << p_minus_q.size2() << "\n";
+
+    MATRIX gradient(n, m);
+
+    std::cout << "gradient calcs; dims: " << gradient.size1() << "," << gradient.size2() << "\n";
 
     for(int i = 0; i < n; i++){   
         for(int j = 0; j < i; j++){
@@ -185,12 +187,12 @@ MATRIX calculateGradient(MATRIX p, MATRIX q, MATRIX y) {
 
             // gradient_i = sum(j=0..n) of (4 * P-Q(i, j) * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
             // below we just perform it element-wise, since y[i] and y[j] are vectors
-            for(int k = 0; k < n; k++){
+            for(int k = 0; k < m; k++){
                 // std::cout << "Substracted vec " << subtracted_vec[k] << " p-q " << p_minus_q(i, j) << " dist " << distances(i, j) << std::endl;
                 subtracted_vec(k) *= 4;
                 subtracted_vec(k) *= p_minus_q(i, j);
                 subtracted_vec(k) *= 1.0 / (1 + distances(i, j));
-                gradient(i, k) += subtracted_vec(k);
+                gradient(i, k) = subtracted_vec(k);
             }
         }
 
@@ -199,7 +201,7 @@ MATRIX calculateGradient(MATRIX p, MATRIX q, MATRIX y) {
 
             // gradient_i = sum(j=0..n) of (4 * P-Q(i, j) * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
             // below we just perform it element-wise, since y[i] and y[j] are vectors
-            for(int k = 0; k < n; k++){
+            for(int k = 0; k < m; k++){
                 // std::cout << "Substracted vec " << subtracted_vec(k) << " p-q " << p_minus_q(i, j) << " dist " << distances(i, j) << std::endl;
                 subtracted_vec(k) *= 4;
                 subtracted_vec(k) *= p_minus_q(i, j);
@@ -224,6 +226,7 @@ MATRIX fitTSNE(MATRIX points, int stepsNumber, double perplexity, double learnin
     MATRIX M(n, 2);
 
     MATRIX probabilities = similaritySNE(points, perplexity);
+
     MATRIX P = symmetrizeProbabilities(probabilities);
 
     //init with random values
@@ -234,11 +237,14 @@ MATRIX fitTSNE(MATRIX points, int stepsNumber, double perplexity, double learnin
         }
     }
 
+    
 
     for(int step = 0; step < stepsNumber; step++){
-
+        std::cout << "Step: " << step << "\n";
         MATRIX Q = similarityTSNE(Y);
+        std::cout << "Q calcs\n";
         MATRIX gradient = calculateGradient(P, Q, Y);
+        std::cout << "Gradient calcs\n";
         //   Y_1 = Y + (momentum * M) + (learning_rate * gradient);
         MATRIX Y_1(Y.size1(), Y.size2());
         double momentum = step < 20 ? initial_momentum : final_momentum;
