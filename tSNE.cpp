@@ -5,78 +5,88 @@
 #include <sstream>
 #include <string>
 #include <list>
-#include <boost/numeric/ublas/matrix.hpp>
-#include <boost/numeric/ublas/matrix_proxy.hpp>
-#include <boost/numeric/ublas/io.hpp>
-#include <boost/numeric/ublas/vector.hpp>
+#include <vector>
+#include "Array.hpp"
 #define DELTA 0.00001
-#define MATRIX matrix<double>
-#define ROW matrix_row<MATRIX>
-#define VECTOR vector<double>
-using namespace boost::numeric::ublas;
 
-double calculateEuclideanDistances(ROW a, ROW b) {
-    return norm_2(a - b);
+using namespace std;
+
+double* substractVectors(double* a, double* b, int size) {  // Warn! Allocate memory!
+    double* result = new double[size];
+    for(int i = 0;i < size;i++) {
+        result[i] = a[i] - b[i];
+    }
+    return result;
 }
 
-MATRIX calculateSquareEuclidianDistances(MATRIX points) {
-    int pointsNumber = points.size1();
-    MATRIX distances(pointsNumber, pointsNumber);
+double calculateEuclideanDistances(double *a, double *b, int size) {
+    double *substracted = substractVectors(a, b, size);
+    double result = 0;
+    for(int i = 0;i < size;i++) {
+        result += substracted[i] * substracted[i];
+    }
+    delete[] substracted;
+    return result;
+}
+
+Array calculateSquareEuclidianDistances(Array points) {
+    int pointsNumber = points.getPointsNumber();
+    Array distances(pointsNumber, pointsNumber);
 
     for(int i=0;i < pointsNumber;i++) {
-        distances(i, i) = 0;
+        distances[i][i] = 0;
         for(int j = i + 1;j < pointsNumber;j++) {;
-            double squareDistance = calculateEuclideanDistances(ROW(points, i), ROW(points, j));
-            distances(j, i) = distances(i, j) = squareDistance;
+            double squareDistance = calculateEuclideanDistances(points[i], points[j], pointsNumber);
+            distances[j][i] = distances[i][j] = squareDistance;
         }
     }
 
     return distances;
 }
 
-double pjiFromSigma(int i, int j, MATRIX distances, double sigma) {
-    double x = exp(-distances(i, j) / (2 * sigma * sigma));
-    // std::cout << -distances(i, j) / (2 * sigma * sigma) << std::endl;
+double pjiFromSigma(int i, int j, Array distances, double sigma) {
+    double x = exp(-distances[i][j] / (2 * sigma * sigma));
+    // cout << -distances[i][j] / (2 * sigma * sigma) << endl;
     double y = 0;
-    for(int k = 0;k < distances.size1();k++) {
+    for(int k = 0;k < distances.getPointsNumber();k++) {
         if(k != i) {
-            y += exp(-distances(i, k) / (2 * sigma * sigma));
+            y += exp(-distances[i][k] / (2 * sigma * sigma));
         }
     }
-    // std::cout << "Pji " << x/y << " because x = " << x << " and y = " << y << " sigma: " << sigma << " i: " << i << " j: " << j << " Distance: " << distances(i, j) << std::endl;
+    // cout << "Pji " << x/y << " because x = " << x << " and y = " << y << " sigma: " << sigma << " i: " << i << " j: " << j << " Distance: " << distances[i][j] << endl;
     return x/y;
 }
 
-double perplexityFromSigma(int i, MATRIX distances, double sigma) {
+double perplexityFromSigma(int i, Array distances, double sigma) {
     double sum = 0;
-    for(int j = 0;j < distances.size1();j++) {
+    for(int j = 0;j < distances.getPointsNumber();j++) {
         if(j != i) {
             double pji = pjiFromSigma(i, j, distances, sigma);
             sum += pji * log2(pji);
         }
     }
-    // std::cout << "Perplexity for i = " << i << ", sigma = " << sigma << " is equal " << pow(2, -sum) << std::endl;
+    // cout << "Perplexity for i = " << i << " is equal " << pow(2, -sum) << endl;
     return pow(2, -sum);
 };
 
-double findSigma(int i, MATRIX distances, double perplexity) {
+double findSigma(int i, Array distances, double perplexity) {
     // This part is a bit complicated. I am not sure, about perplexity function plot
     double start = 0.1;
     double end = 100000;
     double initSearchStep = 0.5;
     bool isGrowing = perplexityFromSigma(i, distances, start) < perplexityFromSigma(i, distances, end);
     if(perplexityFromSigma(i, distances, start) > perplexity && perplexityFromSigma(i, distances, end) > perplexity) {
-        std::cout << "Cannot match, too low" << std::endl;
+        cout << "Cannot match, too low" << endl;
     }
 
     if(perplexityFromSigma(i, distances, start) < perplexity && perplexityFromSigma(i, distances, end) < perplexity) {
-        std::cout << "Cannot match, too big" << std::endl;
+        cout << "Cannot match, too big" << endl;
     }
     double step = 1;
-    double middlePerplexity = 0;
-    while((abs((middlePerplexity = perplexityFromSigma(i, distances, ((start + end) / 2))) - perplexity) > DELTA) && (step > DELTA)) {
+    while((perplexityFromSigma(i, distances, ((start + end) / 2)) - perplexity > DELTA) && step > DELTA) {
         double middle = (start + end) / 2;
-        if(middlePerplexity < perplexity) {
+        double perplexityForMiddle = perplexityFromSigma(i, distances, middle);
+        if(perplexityForMiddle < perplexity) {
             if(isGrowing) {
                 start = middle;
             } else {
@@ -90,75 +100,74 @@ double findSigma(int i, MATRIX distances, double perplexity) {
             }
         }
         step = abs(start - end);
-        // std::cout << "Step: " << step << "; middlePerplexity = " << middlePerplexity << " perplexity = " << perplexity <<std::endl;
     }
     return (start + end) / 2;
 }
 
-MATRIX similaritySNE(MATRIX points, double perplexity) {
-    int pointsNumber = points.size1();
+Array similaritySNE(Array points, double perplexity) {
+    int pointsNumber = points.getPointsNumber();
 
-    MATRIX p(pointsNumber, pointsNumber);
+    Array p(pointsNumber, pointsNumber);
 
-    const MATRIX distances = calculateSquareEuclidianDistances(points);
+    const Array distances = calculateSquareEuclidianDistances(points);
 
     for(int i = 0;i < pointsNumber;i++) {
         double sigma = findSigma(i, distances, perplexity);
-        // std::cout << "Sigma[" << i << "]: " << sigma << std::endl;
+        // cout << "Sigma[" << i << "]: " << sigma << endl;
         for(int j = 0;j < pointsNumber;j++) {
             if(j != i) {
-                p(j, i) = pjiFromSigma(i, j, distances, sigma);
+                p[j][i] = pjiFromSigma(i, j, distances, sigma);
             } else {
-                p(j, i) = 0;
+                p[j][i] = 0;
             } 
         }
     }
     return p;
 }
 
-MATRIX symmetrizeProbabilities(MATRIX probabilities) {
-    int n = probabilities.size1();
+Array symmetrizeProbabilities(Array probabilities) {
+    int n = probabilities.getPointsNumber();
 
-    MATRIX result(n, n);
-    // std::cout << "Probabilities: " << std::endl;
+    Array result(n, n);
+    // cout << "Probabilities: " << endl;
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
-            // std::cout << i << " " << j << " " << probabilities(i, j) << " " << probabilities[j][i];
-            result(i, j) = (probabilities(i, j) + probabilities(j, i)) / (2 * n);
-            // std::cout << " " << result(i, j) << std::endl;
+            // cout << i << " " << j << " " << probabilities[i][j] << " " << probabilities[j][i];
+            result[i][j] = (probabilities[i][j] + probabilities[j][i]) / (2 * n);
+            // cout << " " << result[i][j] << endl;
         }
     }
 
     return result;
 }
 
-MATRIX similarityTSNE(MATRIX y) {
-    // MATRIX of similarities for lower dimension in tSNE
-    int n = y.size1();
-    MATRIX distances = calculateSquareEuclidianDistances(y);
-    MATRIX q(n, n);
+Array similarityTSNE(Array y) {
+    // array of similarities for lower dimension in tSNE
+    int n = y.getPointsNumber();
+    Array distances = calculateSquareEuclidianDistances(y);
+    Array q(n, n);
 
     double denumerator = 0.0;
 
     for(int k = 0; k < n; k++) {
         for(int l = 0; l < n; l++){
             if(k != l) {
-                // std::cout << "Distance: " << distances[k][l] << std::endl;
-                denumerator += exp(-distances(k, l));
+                // cout << "Distance: " << distances[k][l] << endl;
+                denumerator += exp(-distances[k][l]);
             }
         }
     }
-    std::cout << "Denumerator: " << denumerator << std::endl;
+    cout << "Denumerator: " << denumerator << endl;
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
             if(i != j) {
-                double numerator = exp(-distances(i, j));
+                double numerator = exp(-distances[i][j]);
                 if(numerator == 0) {
-                    // std::cout << "Numerator for i: " << i << " and j: " << j << " equal to zero" << std::endl;
+                    // cout << "Numerator for i: " << i << " and j: " << j << " equal to zero" << endl;
                 }
-                q(i, j) = numerator / denumerator;
+                q[i][j] = numerator / denumerator;
             } else {
-                q(i, j) = 0;
+                q[i][j] = 0;
             }
         }
     }
@@ -166,92 +175,99 @@ MATRIX similarityTSNE(MATRIX y) {
     return q;
 }
 
-MATRIX calculateGradient(MATRIX p, MATRIX q, MATRIX y) {
-    int n = p.size1();
-    MATRIX distances = calculateSquareEuclidianDistances(y);
-    MATRIX p_minus_q(n, n);
+double** calculateGradient(Array p, Array q, Array y) {
+    int n = p.getPointsNumber();
+    Array distances = calculateSquareEuclidianDistances(y);
+    Array p_minus_q(n, n);
 
-    MATRIX gradient(n, n);      //????
+    double** gradient = new double*[n];             // Allocation
 
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
-            p_minus_q(i, j) = p(i, j) - q(i, j);
+            p_minus_q[i][j] = p[i][j] - q[i][j];
         }
     }
 
-    for(int i = 0; i < n; i++){   
+    for(int i = 0; i < n; i++){
+        double gradient_i[n] = { 0.0 };
         for(int j = 0; j < i; j++){
-            VECTOR subtracted_vec = ROW (y, i) - ROW(y, j);       // Allocation
+            double* subtracted_vec = substractVectors(y[i], y[j], n);       // Allocation
 
-            // gradient_i = sum(j=0..n) of (4 * P-Q(i, j) * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
+            // gradient_i = sum(j=0..n) of (4 * P-Q[i][j] * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
             // below we just perform it element-wise, since y[i] and y[j] are vectors
             for(int k = 0; k < n; k++){
-                // std::cout << "Substracted vec " << subtracted_vec[k] << " p-q " << p_minus_q(i, j) << " dist " << distances(i, j) << std::endl;
-                subtracted_vec(k) *= 4;
-                subtracted_vec(k) *= p_minus_q(i, j);
-                subtracted_vec(k) *= 1.0 / (1 + distances(i, j));
-                gradient(i, k) += subtracted_vec(k);
+                // cout << "Substracted vec " << subtracted_vec[k] << " p-q " << p_minus_q[i][j] << " dist " << distances[i][j] << endl;
+                subtracted_vec[k] *= 4;
+                subtracted_vec[k] *= p_minus_q[i][j];
+                subtracted_vec[k] *= 1.0 / (1 + distances[i][j]);
+                gradient_i[k] += subtracted_vec[k];
             }
+
+            delete subtracted_vec;
         }
 
         for(int j = i+1; j < n; j++){
-            VECTOR subtracted_vec = ROW (y, i) - ROW(y, j);       // Allocation
+            double* subtracted_vec = substractVectors(y[i], y[j], n);       // Allocation
 
-            // gradient_i = sum(j=0..n) of (4 * P-Q(i, j) * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
+            // gradient_i = sum(j=0..n) of (4 * P-Q[i][j] * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
             // below we just perform it element-wise, since y[i] and y[j] are vectors
             for(int k = 0; k < n; k++){
-                // std::cout << "Substracted vec " << subtracted_vec(k) << " p-q " << p_minus_q(i, j) << " dist " << distances(i, j) << std::endl;
-                subtracted_vec(k) *= 4;
-                subtracted_vec(k) *= p_minus_q(i, j);
-                subtracted_vec(k) *= 1.0 / (1 + distances(i, j));
-                gradient(i, k) += subtracted_vec(k);
+                // cout << "Substracted vec " << subtracted_vec[k] << " p-q " << p_minus_q[i][j] << " dist " << distances[i][j] << endl;
+                subtracted_vec[k] *= 4;
+                subtracted_vec[k] *= p_minus_q[i][j];
+                subtracted_vec[k] *= 1.0 / (1 + distances[i][j]);
+                gradient_i[k] += subtracted_vec[k];
             }
+
+            delete subtracted_vec;
         }
+
+        gradient[i] = gradient_i;
     }
 
     return gradient;
 }
 
-MATRIX fitTSNE(MATRIX points, int stepsNumber, double perplexity, double learning_rate) {
+Array fitTSNE(Array points, int stepsNumber, double perplexity, double learning_rate) {
     // fit lower dimensional space to higher
-    int n = points.size1();
+    int n = points.getPointsNumber();
     
     double initial_momentum = 0.5;
     double final_momentum = 0.8;
     int eta = 500;
     double min_gain = 0.01;
-    MATRIX Y(n, 2);  // = RAND?;
-    MATRIX M(n, 2);
+    Array Y(n, 2);  // = RAND?;
+    Array M(n, 2);
 
-    MATRIX probabilities = similaritySNE(points, perplexity);
-    MATRIX P = symmetrizeProbabilities(probabilities);
+    Array probabilities = similaritySNE(points, perplexity);
+    Array P = symmetrizeProbabilities(probabilities);
 
     //init with random values
     for(int i = 0;i < n;i++) {
         for(int j = 0;j < 2;j++) {
-            Y(i, j) = 0.1 * rand() / RAND_MAX;
-            M(i, j) = 0;  
+            Y[i][j] = 0.1 * rand() / RAND_MAX;
+            M[i][j] = 0;  
         }
     }
 
 
     for(int step = 0; step < stepsNumber; step++){
 
-        MATRIX Q = similarityTSNE(Y);
-        MATRIX gradient = calculateGradient(P, Q, Y);
+        Array Q = similarityTSNE(Y);
+        double** gradient = calculateGradient(P, Q, Y);
         //   Y_1 = Y + (momentum * M) + (learning_rate * gradient);
-        MATRIX Y_1(Y.size1(), Y.size2());
+        Array Y_1(Y.getPointsNumber(), Y.getDimensions());
         double momentum = step < 20 ? initial_momentum : final_momentum;
         for(int i = 0; i < n; i++){
             for(int j = 0; j < 2; j++){
-                Y_1(i, j) = Y(i, j) + (learning_rate * gradient(i, j)) + (momentum * M(i, j));
+                Y_1[i][j] = Y[i][j] + (learning_rate * gradient[i][j]) + (momentum * M[i][j]);
          
             }
         }
         //   M = Y_1 - Y;
         for(int i = 0; i < n; i++){
             for(int j = 0; j < 2; j++){
-                M(i, j) = Y_1(i, j) - Y(i, j);
+                M[i][j] = Y_1[i][j] - Y[i][j];
             }
         }
 
@@ -264,24 +280,23 @@ MATRIX fitTSNE(MATRIX points, int stepsNumber, double perplexity, double learnin
             for(int i = 0; i < n; i++){
                 for(int j = 0; j < n; j++){
                     if(i != j) {
-                        // std::cout << "P[" << i << "][" << j << "] = " << P(i, j) << " Q: " << Q(i, j) << std::endl; 
-                        C += P(i, j) * log(P(i, j) / Q(i, j));
+                        // cout << "P[" << i << "][" << j << "] = " << P[i][j] << " Q: " << Q[i][j] << endl; 
+                        C += P[i][j] * log(P[i][j] / Q[i][j]);
                     }
                 }
             }
 
-            std::cout << "Iteration " << step + 1 << ": error is " << C << std::endl;
+            cout << "Iteration " << step + 1 << ": error is " << C << endl;
         }
     }
 
     return Y;
 }
 
-MATRIX readInData(std::string csv_filename){
-    using namespace std;
+Array readInData(string csv_filename){
     // Load points vectors from file
 
-    std::ifstream file;
+    ifstream file;
     file.open(csv_filename);
 
     int dimensions = 0;
@@ -325,14 +340,14 @@ MATRIX readInData(std::string csv_filename){
     }
     file.close();
 
-    // Load points vectors into MATRIX
+    // Load points vectors into Array
 
-    MATRIX result(points.size(), dimensions);
+    Array result(points.size(), dimensions);
 
     list<double*>::iterator it = points.begin();
     for (int i = 0; i < points.size(); i++){
         for(int j = 0; j < dimensions; j++){
-            result(i, j) = (*it)[j];
+            result[i][j] = (*it)[j];
         }
         
         it++;
@@ -344,14 +359,14 @@ MATRIX readInData(std::string csv_filename){
 
 int main() {
 
-    MATRIX points = readInData("test.csv");
-    MATRIX result = fitTSNE(points, 500, 5, 0.1);
+    Array points = readInData("test.csv");
+    Array result = fitTSNE(points, 500, 30, 0.1);
 
-    for(int i = 0;i < result.size1();i++) {
-        for(int j = 0;j < result.size2();j++) {
-            std::cout << result(i, j) << " ";
+    for(int i = 0;i < result.getPointsNumber();i++) {
+        for(int j = 0;j < result.getDimensions();j++) {
+            cout << result[i][j] << " ";
         }
-        std::cout << std::endl;
+        cout << endl;
     }
 
     return 0;
