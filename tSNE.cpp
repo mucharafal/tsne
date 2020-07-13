@@ -55,7 +55,7 @@ double perplexityFromSigma(int i, MATRIX distances, double sigma) {
             sum += pji * log2(pji);
         }
     }
-    std::cout << "Perplexity for i = " << i << ", sigma = " << sigma << " is equal " << pow(2, -sum) << std::endl;
+    // std::cout << "Perplexity for i = " << i << ", sigma = " << sigma << " is equal " << pow(2, -sum) << std::endl;
     return pow(2, -sum);
 };
 
