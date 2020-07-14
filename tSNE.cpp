@@ -19,7 +19,7 @@ double calculateEuclideanDistances(ROW a, ROW b) {
     return norm_2(a - b);
 }
 
-MATRIX calculateSquareEuclidianDistances(MATRIX points) {
+MATRIX calculateEuclidianDistances(MATRIX points) {
     int pointsNumber = points.size1();
     MATRIX distances(pointsNumber, pointsNumber);
 
@@ -35,12 +35,14 @@ MATRIX calculateSquareEuclidianDistances(MATRIX points) {
 }
 
 double pjiFromSigma(int i, int j, MATRIX distances, double sigma) {
-    double x = exp(-distances(i, j) / (2 * sigma * sigma));
+    double x = exp(-(distances(i, j) * distances(i, j)) / (2 * sigma * sigma));
     // std::cout << -distances(i, j) / (2 * sigma * sigma) << std::endl;
     double y = 0;
     for(int k = 0;k < distances.size1();k++) {
-        if(k != i) {
-            y += exp(-distances(i, k) / (2 * sigma * sigma));
+        for (int l = 0;l < distances.size1();l++) {
+            if(k != l) {
+                y += exp(-(distances(l, k) * distances(l, k)) / (2 * sigma * sigma));
+            }
         }
     }
     // std::cout << "Pji " << x/y << " because x = " << x << " and y = " << y << " sigma: " << sigma << " i: " << i << " j: " << j << " Distance: " << distances(i, j) << std::endl;
@@ -100,7 +102,7 @@ MATRIX similaritySNE(MATRIX points, double perplexity) {
 
     MATRIX p(pointsNumber, pointsNumber);
 
-    const MATRIX distances = calculateSquareEuclidianDistances(points);
+    const MATRIX distances = calculateEuclidianDistances(points);
 
     for(int i = 0;i < pointsNumber;i++) {
         double sigma = findSigma(i, distances, perplexity);
@@ -135,7 +137,7 @@ MATRIX symmetrizeProbabilities(MATRIX probabilities) {
 MATRIX similarityTSNE(MATRIX y) {
     // MATRIX of similarities for lower dimension in tSNE
     int n = y.size1();
-    MATRIX distances = calculateSquareEuclidianDistances(y);
+    MATRIX distances = calculateEuclidianDistances(y);
     MATRIX q(n, n);
 
     double denumerator = 0.0;
@@ -144,7 +146,7 @@ MATRIX similarityTSNE(MATRIX y) {
         for(int l = 0; l < n; l++){
             if(k != l) {
                 // std::cout << "Distance: " << distances[k][l] << std::endl;
-                denumerator += exp(-distances(k, l));
+                denumerator += 1.0 / (1 + distances(k, l) * distances(k, l));
             }
         }
     }
@@ -152,7 +154,7 @@ MATRIX similarityTSNE(MATRIX y) {
     for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
             if(i != j) {
-                double numerator = exp(-distances(i, j));
+                double numerator = 1.0 / (1 + distances(i, j) * distances(i, j));
                 if(numerator == 0) {
                     // std::cout << "Numerator for i: " << i << " and j: " << j << " equal to zero" << std::endl;
                 }
@@ -169,7 +171,7 @@ MATRIX similarityTSNE(MATRIX y) {
 MATRIX calculateGradient(MATRIX p, MATRIX q, MATRIX y) {
     int n = y.size1();
     int m = y.size2();
-    MATRIX distances = calculateSquareEuclidianDistances(y);
+    MATRIX distances = calculateEuclidianDistances(y);
 
     // std::cout << "Distances calcs; dims: " << distances.size1() << "," << distances.size2() << "\n";
 
@@ -250,7 +252,7 @@ MATRIX fitTSNE(MATRIX points, int stepsNumber, double perplexity, double learnin
         double momentum = step < 20 ? initial_momentum : final_momentum;
         for(int i = 0; i < n; i++){
             for(int j = 0; j < 2; j++){
-                Y_1(i, j) = Y(i, j) - (learning_rate * gradient(i, j)) + (momentum * M(i, j));
+                Y_1(i, j) = Y(i, j) + (learning_rate * gradient(i, j)) + (momentum * M(i, j));
                 // std::cout<<"Step: " << (learning_rate * gradient(i, j)) + (momentum * M(i, j)) << "\n";
             }
         }
@@ -351,7 +353,7 @@ MATRIX readInData(std::string csv_filename){
 int main() {
 
     MATRIX points = readInData("processed_mnist.csv");
-    MATRIX result = fitTSNE(points, 500, 5, 1);
+    MATRIX result = fitTSNE(points, 1000, 30, 200);
 
     for(int i = 0;i < result.size1();i++) {
         for(int j = 0;j < result.size2();j++) {
