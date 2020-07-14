@@ -5,273 +5,278 @@
 #include <sstream>
 #include <string>
 #include <list>
+#include <random>
 #include <boost/numeric/ublas/matrix.hpp>
 #include <boost/numeric/ublas/matrix_proxy.hpp>
 #include <boost/numeric/ublas/io.hpp>
 #include <boost/numeric/ublas/vector.hpp>
+#include <boost/range/algorithm.hpp>
 #define DELTA 0.00001
 #define MATRIX matrix<double>
 #define ROW matrix_row<MATRIX>
 #define VECTOR vector<double>
 using namespace boost::numeric::ublas;
 
-double calculateEuclideanDistances(ROW a, ROW b) {
-    return norm_2(a - b);
-}
-
-MATRIX calculateSquareEuclidianDistances(MATRIX points) {
-    int pointsNumber = points.size1();
-    MATRIX distances(pointsNumber, pointsNumber);
-
-    for(int i=0;i < pointsNumber;i++) {
-        distances(i, i) = 0;
-        for(int j = i + 1;j < pointsNumber;j++) {;
-            double squareDistance = calculateEuclideanDistances(ROW(points, i), ROW(points, j));
-            distances(j, i) = distances(i, j) = squareDistance;
-        }
-    }
-
-    return distances;
-}
-
-double pjiFromSigma(int i, int j, MATRIX distances, double sigma) {
-    double x = exp(-distances(i, j) / (2 * sigma * sigma));
-    // std::cout << -distances(i, j) / (2 * sigma * sigma) << std::endl;
-    double y = 0;
-    for(int k = 0;k < distances.size1();k++) {
-        if(k != i) {
-            y += exp(-distances(i, k) / (2 * sigma * sigma));
-        }
-    }
-    // std::cout << "Pji " << x/y << " because x = " << x << " and y = " << y << " sigma: " << sigma << " i: " << i << " j: " << j << " Distance: " << distances(i, j) << std::endl;
-    return x/y;
-}
-
-double perplexityFromSigma(int i, MATRIX distances, double sigma) {
-    double sum = 0;
-    for(int j = 0;j < distances.size1();j++) {
-        if(j != i) {
-            double pji = pjiFromSigma(i, j, distances, sigma);
-            sum += pji * log2(pji);
-        }
-    }
-    // std::cout << "Perplexity for i = " << i << ", sigma = " << sigma << " is equal " << pow(2, -sum) << std::endl;
-    return pow(2, -sum);
+struct HBETA_RESULT {
+    double H;
+    VECTOR P;
 };
 
-double findSigma(int i, MATRIX distances, double perplexity) {
-    // This part is a bit complicated. I am not sure, about perplexity function plot
-    double start = 0.1;
-    double end = 100000;
-    double initSearchStep = 0.5;
-    bool isGrowing = perplexityFromSigma(i, distances, start) < perplexityFromSigma(i, distances, end);
-    if(perplexityFromSigma(i, distances, start) > perplexity && perplexityFromSigma(i, distances, end) > perplexity) {
-        std::cout << "Cannot match, too low" << std::endl;
+HBETA_RESULT hBeta(VECTOR D, double beta){
+    VECTOR P(D.size());
+    double H;
+    double sumP = 0.0;
+    double sumDxP = 0.0;
+
+    for(int i=0; i < D.size(); i++){
+        P(i) = exp(-D(i) * beta);
+        sumP += P(i);
+        sumDxP += P(i) * D(i);
     }
 
-    if(perplexityFromSigma(i, distances, start) < perplexity && perplexityFromSigma(i, distances, end) < perplexity) {
-        std::cout << "Cannot match, too big" << std::endl;
-    }
-    double step = 1;
-    double middlePerplexity = 0;
-    while((abs((middlePerplexity = perplexityFromSigma(i, distances, ((start + end) / 2))) - perplexity) > DELTA) && (step > DELTA)) {
-        double middle = (start + end) / 2;
-        if(middlePerplexity < perplexity) {
-            if(isGrowing) {
-                start = middle;
-            } else {
-                end = middle;
-            }
-        } else {
-            if(isGrowing) {
-                end = middle;
-            } else {
-                start = middle;
-            }
-        }
-        step = abs(start - end);
-        // std::cout << "Step: " << step << "; middlePerplexity = " << middlePerplexity << " perplexity = " << perplexity <<std::endl;
-    }
-    return (start + end) / 2;
+    H = log(sumP) + beta * sumDxP / sumP;
+
+    P /= sumP;
+
+    return HBETA_RESULT{
+        H,
+        P
+    };
 }
 
-MATRIX similaritySNE(MATRIX points, double perplexity) {
-    int pointsNumber = points.size1();
-
-    MATRIX p(pointsNumber, pointsNumber);
-
-    const MATRIX distances = calculateSquareEuclidianDistances(points);
-
-    for(int i = 0;i < pointsNumber;i++) {
-        double sigma = findSigma(i, distances, perplexity);
-        // std::cout << "Sigma[" << i << "]: " << sigma << std::endl;
-        for(int j = 0;j < pointsNumber;j++) {
-            if(j != i) {
-                p(j, i) = pjiFromSigma(i, j, distances, sigma);
-            } else {
-                p(j, i) = 0;
-            } 
-        }
+template<class T> void remove(vector<T> &v, uint idx)
+{
+    assert(idx < v.size());
+    for (uint i = idx; i < v.size() - 1; i++) {
+        v[i] = v[i + 1];
     }
-    return p;
+    v.resize(v.size() - 1);
 }
 
-MATRIX symmetrizeProbabilities(MATRIX probabilities) {
-    int n = probabilities.size1();
+MATRIX x2p(MATRIX points, double tol /*1e-5*/, double perplexity){
 
-    MATRIX result(n, n);
-    // std::cout << "Probabilities: " << std::endl;
-    for(int i = 0; i < n; i++){
-        for(int j = 0; j < n; j++){
-            // std::cout << i << " " << j << " " << probabilities(i, j) << " " << probabilities[j][i];
-            result(i, j) = (probabilities(i, j) + probabilities(j, i)) / (2 * n);
-            // std::cout << " " << result(i, j) << std::endl;
+    int n = points.size1();
+    int d = points.size2();
+
+    VECTOR sum_points(n);
+
+    for(int i=0; i<n; i++){
+        sum_points(i) = 0.0;
+    }
+
+    for(int i=0; i<n; i++){
+        for(int j=0; j<d; j++){
+            sum_points(i) += points(i, j) * points(i, j);
         }
     }
 
-    return result;
-}
+    MATRIX D(n, n);
+    MATRIX P(n, n);
+    VECTOR beta(n);
+    double logU = log(perplexity);
 
-MATRIX similarityTSNE(MATRIX y) {
-    // MATRIX of similarities for lower dimension in tSNE
-    int n = y.size1();
-    MATRIX distances = calculateSquareEuclidianDistances(y);
-    MATRIX q(n, n);
-
-    double denumerator = 0.0;
-
-    for(int k = 0; k < n; k++) {
-        for(int l = 0; l < n; l++){
-            if(k != l) {
-                // std::cout << "Distance: " << distances[k][l] << std::endl;
-                denumerator += exp(-distances(k, l));
-            }
+    for(int i=0;i<n;i++){
+        beta(i) = 1.0;
+        for(int j=0;j<n;j++){
+            P(i,j) = 0.0;
+            D(i,j) = 0.0;     
         }
     }
-    std::cout << "Denumerator: " << denumerator << std::endl;
-    for(int i = 0; i < n; i++){
-        for(int j = 0; j < n; j++){
-            if(i != j) {
-                double numerator = exp(-distances(i, j));
-                if(numerator == 0) {
-                    // std::cout << "Numerator for i: " << i << " and j: " << j << " equal to zero" << std::endl;
+
+
+    MATRIX dotProduct(n,n);
+    dotProduct = prod(points, trans(points));
+
+    for(int i=0;i<n;i++){
+        for(int j=0;j<n;j++){
+            D(i,j) = -2 * dotProduct(i,j) + sum_points(i);
+        }
+    }
+
+    D = trans(D);
+
+    for(int i=0;i<n;i++){
+        double sum_pt = sum_points(i);
+        for(int j=0;j<n;j++){
+            D(i,j) += sum_pt;
+        }
+    }
+
+    int betamin;
+    int betamax;
+
+    for(int i=0; i<n; i++){
+        betamin = INT_MIN;
+        betamax = INT_MAX;
+
+        ROW rowI(D, i);
+        VECTOR Di(rowI);
+        remove(Di, i);
+        HBETA_RESULT res = hBeta(Di, beta(i));
+        double Hdiff = res.H - logU;
+        int tries = 0;
+
+        while(abs(Hdiff) > tol && tries < 50){
+            if(Hdiff > 0){
+                betamin = beta(i);
+
+                if(betamax == INT_MAX || betamax == INT_MIN){
+                    beta(i) *= 2;
+                } else {
+                    beta(i) = (beta(i) + betamax) / 2;
                 }
-                q(i, j) = numerator / denumerator;
             } else {
-                q(i, j) = 0;
+                betamax = beta(i);
+                if(betamin == INT_MAX || betamin == INT_MIN){
+                    beta(i) /= 2;
+                } else {
+                    beta(i) = (beta(i) + betamin) / 2;
+                }
             }
+
+            res = hBeta(Di, beta(i));
+            Hdiff = res.H - logU;
+            tries += 1;
         }
-    }
 
-    return q;
-}
-
-MATRIX calculateGradient(MATRIX p, MATRIX q, MATRIX y) {
-    int n = p.size1();
-    MATRIX distances = calculateSquareEuclidianDistances(y);
-    MATRIX p_minus_q(n, n);
-
-    MATRIX gradient(n, n);      //????
-
-    for(int i = 0; i < n; i++){
         for(int j = 0; j < n; j++){
-            p_minus_q(i, j) = p(i, j) - q(i, j);
-        }
-    }
-
-    for(int i = 0; i < n; i++){   
-        for(int j = 0; j < i; j++){
-            VECTOR subtracted_vec = ROW (y, i) - ROW(y, j);       // Allocation
-
-            // gradient_i = sum(j=0..n) of (4 * P-Q(i, j) * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
-            // below we just perform it element-wise, since y[i] and y[j] are vectors
-            for(int k = 0; k < n; k++){
-                // std::cout << "Substracted vec " << subtracted_vec[k] << " p-q " << p_minus_q(i, j) << " dist " << distances(i, j) << std::endl;
-                subtracted_vec(k) *= 4;
-                subtracted_vec(k) *= p_minus_q(i, j);
-                subtracted_vec(k) *= 1.0 / (1 + distances(i, j));
-                gradient(i, k) += subtracted_vec(k);
+            if(j != i){
+                int index = j;
+                if(index > i){
+                    index--;
+                }
+                P(i, j) = res.P(index);
             }
         }
 
-        for(int j = i+1; j < n; j++){
-            VECTOR subtracted_vec = ROW (y, i) - ROW(y, j);       // Allocation
-
-            // gradient_i = sum(j=0..n) of (4 * P-Q(i, j) * y[i]-y[j] * (1 + ||y[i] - y[j]||^2)^-1 )
-            // below we just perform it element-wise, since y[i] and y[j] are vectors
-            for(int k = 0; k < n; k++){
-                // std::cout << "Substracted vec " << subtracted_vec(k) << " p-q " << p_minus_q(i, j) << " dist " << distances(i, j) << std::endl;
-                subtracted_vec(k) *= 4;
-                subtracted_vec(k) *= p_minus_q(i, j);
-                subtracted_vec(k) *= 1.0 / (1 + distances(i, j));
-                gradient(i, k) += subtracted_vec(k);
-            }
-        }
     }
 
-    return gradient;
+    double sumBeta = 0.0;
+
+    for(int i=0; i<n; i++){
+        sumBeta += sqrt(1.0 / beta(i));
+    }
+
+    std::cout<<"Mean value of sigma: "<< sumBeta/n << std::endl;
+
+    return P;
 }
 
-MATRIX fitTSNE(MATRIX points, int stepsNumber, double perplexity, double learning_rate) {
-    // fit lower dimensional space to higher
+MATRIX refitTSNE(MATRIX points, int stepsNumber, double perplexity, double learning_rate) {
     int n = points.size1();
     
+    int max_iter = 1000;
     double initial_momentum = 0.5;
     double final_momentum = 0.8;
     int eta = 500;
     double min_gain = 0.01;
-    MATRIX Y(n, 2);  // = RAND?;
+    MATRIX Y(n, 2);
+    MATRIX dY(n, 2);
+    MATRIX iY(n, 2);
+    MATRIX gains(n, 2);
     MATRIX M(n, 2);
 
-    MATRIX probabilities = similaritySNE(points, perplexity);
-    MATRIX P = symmetrizeProbabilities(probabilities);
+    MATRIX probabilities;
+    MATRIX P(n, n);
+
+    std::default_random_engine generator;
+    std::normal_distribution<double> distribution(0, 1.0);
 
     //init with random values
     for(int i = 0;i < n;i++) {
         for(int j = 0;j < 2;j++) {
-            Y(i, j) = 0.1 * rand() / RAND_MAX;
-            M(i, j) = 0;  
+            Y(i, j) = distribution(generator);
+            dY(i, j) = 0.0;
+            iY(i, j) = 0.0;
+            gains(i, j) = 0.0;
         }
     }
 
+    P = x2p(points, 1e-5, perplexity);
 
-    for(int step = 0; step < stepsNumber; step++){
+    P += trans(P);
 
-        MATRIX Q = similarityTSNE(Y);
-        MATRIX gradient = calculateGradient(P, Q, Y);
-        //   Y_1 = Y + (momentum * M) + (learning_rate * gradient);
-        MATRIX Y_1(Y.size1(), Y.size2());
-        double momentum = step < 20 ? initial_momentum : final_momentum;
-        for(int i = 0; i < n; i++){
-            for(int j = 0; j < 2; j++){
-                Y_1(i, j) = Y(i, j) + (learning_rate * gradient(i, j)) + (momentum * M(i, j));
-         
-            }
+    double sumP = 0.0;
+    for(int i=0; i<n; i++){
+        for(int j=0; j<n; j++){
+            sumP += P(i, j);
         }
-        //   M = Y_1 - Y;
+    }
+    P /= sumP;    
+    P *= 4;
+
+    for(int i=0; i<n; i++){
+        for(int j=0; j<n; j++){
+            P(i, j) = std::max(P(i, j), 1e-12);
+        }
+    }
+
+    for(int iter = 0; iter < max_iter; iter++){
+        VECTOR sum_Y(n);
         for(int i = 0; i < n; i++){
-            for(int j = 0; j < 2; j++){
-                M(i, j) = Y_1(i, j) - Y(i, j);
-            }
+            sum_Y(i) = Y(i, 0) * Y(i, 0) + Y(i, 1) * Y(i, 1);
         }
 
-        Y = Y_1;
-
-        // Print iteration error
-        if ((step + 1) % 10 == 0){
-            double C = 0.0;
-
-            for(int i = 0; i < n; i++){
-                for(int j = 0; j < n; j++){
-                    if(i != j) {
-                        // std::cout << "P[" << i << "][" << j << "] = " << P(i, j) << " Q: " << Q(i, j) << std::endl; 
-                        C += P(i, j) * log(P(i, j) / Q(i, j));
-                    }
+        MATRIX num = -2.0 * prod(Y, trans(Y));
+        
+        for(int i=0; i<n; i++){
+            for(int j=0; j<n; j++){
+                if(i == j){
+                    num(i,j) = 0.0;
+                } else {
+                    num(i,j) = 1.0 / (1.0 + num(i, j) + sum_Y(i) + sum_Y(j));
                 }
             }
-
-            std::cout << "Iteration " << step + 1 << ": error is " << C << std::endl;
         }
+        num = trans(num);
+
+        double sumNum = 0.0;
+
+        for(int i=0; i<n; i++){
+            for(int j=0; j<n; j++){
+                sumNum += num(i,j);
+            }
+        }
+
+        MATRIX Q = num / sumNum;
+
+        for(int i=0; i<n; i++){
+            for(int j=0; j<n; j++){
+                Q(i,j) = std::max(Q(i,j), 1e-12);
+            }
+        }
+
+        // Dobrze do tego momentu
+
+        // Zostalo:
+
+        /*
+        # Compute gradient
+        PQ = P - Q
+        for i in range(n):
+            dY[i, :] = np.sum(np.tile(PQ[:, i] * num[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
+
+        # Perform the update
+        if iter < 20:
+            momentum = initial_momentum
+        else:
+            momentum = final_momentum
+        gains = (gains + 0.2) * ((dY > 0.) != (iY > 0.)) + \
+                (gains * 0.8) * ((dY > 0.) == (iY > 0.))
+        gains[gains < min_gain] = min_gain
+        iY = momentum * iY - eta * (gains * dY)
+        Y = Y + iY
+        Y = Y - np.tile(np.mean(Y, 0), (n, 1))
+
+        # Compute current value of cost function
+        if (iter + 1) % 10 == 0:
+            C = np.sum(P * np.log(P / Q))
+            print("Iteration %d: error is %f" % (iter + 1, C))
+
+        # Stop lying about P-values
+        if iter == 100:
+            P = P / 4.
+        */
     }
 
     return Y;
@@ -345,7 +350,7 @@ MATRIX readInData(std::string csv_filename){
 int main() {
 
     MATRIX points = readInData("test.csv");
-    MATRIX result = fitTSNE(points, 500, 5, 0.1);
+    MATRIX result = refitTSNE(points, 500, 20, 0.1);
 
     for(int i = 0;i < result.size1();i++) {
         for(int j = 0;j < result.size2();j++) {
