@@ -12,21 +12,55 @@
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/range/algorithm.hpp>
 #define DELTA 0.00001
-#define MATRIX matrix<double>
+#define MATRIX matrix<long double>
 #define ROW matrix_row<MATRIX>
-#define VECTOR vector<double>
+#define COLUMN matrix_column<MATRIX>
+#define VECTOR vector<long double>
+#define MATRIX_OF scalar_matrix<long double>
+#define NDEBUG 1
+#define BOOST_UBLAS_USE_LONG_DOUBLE 1
 using namespace boost::numeric::ublas;
 
+MATRIX tile(VECTOR row, int numberOfRows) {
+    MATRIX res(numberOfRows, row.size());
+    for(int i = 0;i < numberOfRows;i++) {
+        ROW(res, i) = row;
+    }
+    return res;
+}
+
+VECTOR sum(MATRIX input_m, int axis) {
+    MATRIX m = input_m;
+    if(axis == 1) {
+        m = trans(input_m);
+    } 
+    int columns_number = m.size2();
+    VECTOR out(columns_number);
+    for(int i = 0;i < columns_number;i++) {
+        out(i) = sum(COLUMN(m, i));
+    }
+    return out;
+}
+
+VECTOR mean(MATRIX input_m, int axis) {
+    VECTOR sums = sum(input_m, axis);
+    if(axis == 1) {
+        return sums / input_m.size2();
+    } else {
+        return sums / input_m.size1();
+    }
+}
+
 struct HBETA_RESULT {
-    double H;
+    long double H;
     VECTOR P;
 };
 
-HBETA_RESULT hBeta(VECTOR D, double beta){
+HBETA_RESULT hBeta(VECTOR D, long double beta){
     VECTOR P(D.size());
-    double H;
-    double sumP = 0.0;
-    double sumDxP = 0.0;
+    long double H;
+    long double sumP = 0.0;
+    long double sumDxP = 0.0;
 
     for(int i=0; i < D.size(); i++){
         P(i) = exp(-D(i) * beta);
@@ -53,27 +87,17 @@ template<class T> void remove(vector<T> &v, uint idx)
     v.resize(v.size() - 1);
 }
 
-MATRIX x2p(MATRIX points, double tol /*1e-5*/, double perplexity){
+MATRIX x2p(MATRIX X, long double tol /*1e-5*/, long double perplexity){
 
-    int n = points.size1();
-    int d = points.size2();
+    int n = X.size1();
+    int d = X.size2();
 
-    VECTOR sum_points(n);
-
-    for(int i=0; i<n; i++){
-        sum_points(i) = 0.0;
-    }
-
-    for(int i=0; i<n; i++){
-        for(int j=0; j<d; j++){
-            sum_points(i) += points(i, j) * points(i, j);
-        }
-    }
+    VECTOR sum_X = sum(element_prod(X, X), 1);
 
     MATRIX D(n, n);
     MATRIX P(n, n);
     VECTOR beta(n);
-    double logU = log(perplexity);
+    long double logU = log(perplexity);
 
     for(int i=0;i<n;i++){
         beta(i) = 1.0;
@@ -83,51 +107,48 @@ MATRIX x2p(MATRIX points, double tol /*1e-5*/, double perplexity){
         }
     }
 
-
-    MATRIX dotProduct(n,n);
-    dotProduct = prod(points, trans(points));
+    MATRIX dotProduct = prod(X, trans(X));
 
     for(int i=0;i<n;i++){
         for(int j=0;j<n;j++){
-            D(i,j) = -2 * dotProduct(i,j) + sum_points(i);
+            D(i,j) = -2 * dotProduct(i,j) + sum_X(i);
         }
     }
 
     D = trans(D);
 
     for(int i=0;i<n;i++){
-        double sum_pt = sum_points(i);
+        long double sum_pt = sum_X(i);
         for(int j=0;j<n;j++){
             D(i,j) += sum_pt;
         }
     }
 
-    int betamin;
-    int betamax;
+    double betamin;
+    double betamax;
 
     for(int i=0; i<n; i++){
-        betamin = INT_MIN;
-        betamax = INT_MAX;
+        betamin = -__DBL_MAX__;
+        betamax = __DBL_MAX__;
 
-        ROW rowI(D, i);
-        VECTOR Di(rowI);
+        VECTOR Di = ROW (D, i);
         remove(Di, i);
         HBETA_RESULT res = hBeta(Di, beta(i));
-        double Hdiff = res.H - logU;
+        long double Hdiff = res.H - logU;
         int tries = 0;
 
         while(abs(Hdiff) > tol && tries < 50){
             if(Hdiff > 0){
                 betamin = beta(i);
 
-                if(betamax == INT_MAX || betamax == INT_MIN){
+                if(betamax == __DBL_MAX__ || betamax == -__DBL_MAX__){
                     beta(i) *= 2;
                 } else {
                     beta(i) = (beta(i) + betamax) / 2;
                 }
             } else {
                 betamax = beta(i);
-                if(betamin == INT_MAX || betamin == INT_MIN){
+                if(betamin == __DBL_MAX__ || betamin == -__DBL_MAX__){
                     beta(i) /= 2;
                 } else {
                     beta(i) = (beta(i) + betamin) / 2;
@@ -148,10 +169,9 @@ MATRIX x2p(MATRIX points, double tol /*1e-5*/, double perplexity){
                 P(i, j) = res.P(index);
             }
         }
-
     }
 
-    double sumBeta = 0.0;
+    long double sumBeta = 0.0;
 
     for(int i=0; i<n; i++){
         sumBeta += sqrt(1.0 / beta(i));
@@ -162,14 +182,17 @@ MATRIX x2p(MATRIX points, double tol /*1e-5*/, double perplexity){
     return P;
 }
 
-MATRIX refitTSNE(MATRIX points, int stepsNumber, double perplexity, double learning_rate) {
+
+
+MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long double learning_rate) {
     int n = points.size1();
-    
+    int no_dims = 2;  
+
     int max_iter = 1000;
-    double initial_momentum = 0.5;
-    double final_momentum = 0.8;
+    long double initial_momentum = 0.5;
+    long double final_momentum = 0.8;
     int eta = 500;
-    double min_gain = 0.01;
+    long double min_gain = 0.01;
     MATRIX Y(n, 2);
     MATRIX dY(n, 2);
     MATRIX iY(n, 2);
@@ -180,15 +203,16 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, double perplexity, double learn
     MATRIX P(n, n);
 
     std::default_random_engine generator;
-    std::normal_distribution<double> distribution(0, 1.0);
+    std::normal_distribution<long double> distribution(0, 1.0);
 
     //init with random values
     for(int i = 0;i < n;i++) {
         for(int j = 0;j < 2;j++) {
-            Y(i, j) = distribution(generator);
+            // Y(i, j) = distribution(generator);
+            Y(i, j) = (i * j / 1000. + i) / 100.;
             dY(i, j) = 0.0;
             iY(i, j) = 0.0;
-            gains(i, j) = 0.0;
+            gains(i, j) = 1.0;
         }
     }
 
@@ -196,7 +220,7 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, double perplexity, double learn
 
     P += trans(P);
 
-    double sumP = 0.0;
+    long double sumP = 0.0;
     for(int i=0; i<n; i++){
         for(int j=0; j<n; j++){
             sumP += P(i, j);
@@ -207,7 +231,7 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, double perplexity, double learn
 
     for(int i=0; i<n; i++){
         for(int j=0; j<n; j++){
-            P(i, j) = std::max(P(i, j), 1e-12);
+            P(i, j) = std::max(P(i, j), (long double)1e-12);
         }
     }
 
@@ -230,7 +254,7 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, double perplexity, double learn
         }
         num = trans(num);
 
-        double sumNum = 0.0;
+        long double sumNum = 0.0;
 
         for(int i=0; i<n; i++){
             for(int j=0; j<n; j++){
@@ -242,41 +266,67 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, double perplexity, double learn
 
         for(int i=0; i<n; i++){
             for(int j=0; j<n; j++){
-                Q(i,j) = std::max(Q(i,j), 1e-12);
+                Q(i,j) = std::max(Q(i,j), (long double)1e-12);
             }
         }
 
-        // Dobrze do tego momentu
+      
 
-        // Zostalo:
+        // Compute gradient
+        MATRIX PQ = P - Q;
+        for(int i = 0;i < n;i++) {
+            VECTOR PQi = COLUMN(PQ, i);
+            VECTOR NUMi = COLUMN(num, i);
+            VECTOR row = element_prod(PQi, NUMi);
+            MATRIX tileRes = tile(row, no_dims);
+            MATRIX subY = tile(ROW(Y, i), n) - Y;
+            MATRIX toSum = element_prod(trans(tileRes), subY);
+            ROW(dY, i) = sum(toSum, 0);
+        }
+        
+        //# Perform the update
+        long double momentum = iter < 20 ? initial_momentum : final_momentum;
+        for(int i = 0;i < n;i++) {
+            for(int j = 0;j < no_dims;j++) {
+                if(dY(i, j) > 0. == iY(i, j) > 0.) {
+                    gains(i, j) *= 0.8;
+                } else {
+                    gains(i, j) += 0.2;
+                }
+                gains(i, j) = std::max(gains(i, j), min_gain);
+            }
+        }
 
-        /*
-        # Compute gradient
-        PQ = P - Q
-        for i in range(n):
-            dY[i, :] = np.sum(np.tile(PQ[:, i] * num[:, i], (no_dims, 1)).T * (Y[i, :] - Y), 0)
+        iY = element_prod(MATRIX_OF(Y.size1(), Y.size2(), momentum), iY) - 
+            element_prod(MATRIX_OF(gains.size1(), gains.size2(), eta), 
+                element_prod(gains, dY));  
 
-        # Perform the update
-        if iter < 20:
-            momentum = initial_momentum
-        else:
-            momentum = final_momentum
-        gains = (gains + 0.2) * ((dY > 0.) != (iY > 0.)) + \
-                (gains * 0.8) * ((dY > 0.) == (iY > 0.))
-        gains[gains < min_gain] = min_gain
-        iY = momentum * iY - eta * (gains * dY)
-        Y = Y + iY
-        Y = Y - np.tile(np.mean(Y, 0), (n, 1))
-
-        # Compute current value of cost function
-        if (iter + 1) % 10 == 0:
-            C = np.sum(P * np.log(P / Q))
-            print("Iteration %d: error is %f" % (iter + 1, C))
-
-        # Stop lying about P-values
-        if iter == 100:
-            P = P / 4.
-        */
+        Y = Y + iY;
+        Y = Y - tile(mean(Y, 0), n);
+        
+        // # Compute current value of cost function
+        if((iter + 1) % 10 == 0) {
+            long double C = 0.0;
+            // std::cout << Y << "\n";
+            // char a;
+            // std::cin >> a;
+            for(int i = 0; i < n; i++){
+                for(int j = 0; j < n; j++){
+                    if(i != j) {
+                        // std::cout << "P[" << i << "][" << j << "] = " << P(i, j) << " Q: " << Q(i, j) << std::endl; 
+                        C += P(i, j) * log(P(i, j) / Q(i, j));
+                    }
+                }
+            }
+            if(C < 1e-5) {
+                return Y;
+            }
+            std::cout << "Iteration " << iter + 1 << ": error is " << C << std::endl;
+        }
+        // # Stop lying about P-values
+        if(iter == 100) {
+            P = P / 4.;
+        }
     }
 
     return Y;
@@ -303,7 +353,7 @@ MATRIX readInData(std::string csv_filename){
         }
     }
 
-    list<double*> points;
+    list<long double*> points;
 
     while(file.good()){
         string point_line;
@@ -317,7 +367,7 @@ MATRIX readInData(std::string csv_filename){
         istringstream iss(point_line);
         string val;
 
-        double* point = new double[dimensions];
+        long double* point = new long double[dimensions];
         int i = 0;
 
         // Split line using ',' as delimiter
@@ -334,7 +384,7 @@ MATRIX readInData(std::string csv_filename){
 
     MATRIX result(points.size(), dimensions);
 
-    list<double*>::iterator it = points.begin();
+    list<long double*>::iterator it = points.begin();
     for (int i = 0; i < points.size(); i++){
         for(int j = 0; j < dimensions; j++){
             result(i, j) = (*it)[j];
@@ -349,7 +399,7 @@ MATRIX readInData(std::string csv_filename){
 
 int main() {
 
-    MATRIX points = readInData("test.csv");
+    MATRIX points = readInData("test_mnist.csv");
     MATRIX result = refitTSNE(points, 500, 20, 0.1);
 
     for(int i = 0;i < result.size1();i++) {
