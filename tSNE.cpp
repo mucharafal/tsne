@@ -399,6 +399,7 @@ int main() {
     MATRIX points = readInData("tsne_data.csv");
     MATRIX result = refitTSNE(points, 500, 20, 0.1);
 
+
     for(int i = 0;i < result.size1();i++) {
         for(int j = 0;j < result.size2();j++) {
             std::cout << result(i, j) << " ";
