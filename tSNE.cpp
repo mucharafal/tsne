@@ -1,3 +1,6 @@
+// Basing on python implementation by Laurens van der Maaten on 20-12-08 which allows non-comercial usage.
+// Authors: Grzegorz Frejek, Rafał Mucha
+
 #include <iostream>
 #include <fstream>
 #include <math.h>
@@ -203,13 +206,12 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
     MATRIX P(n, n);
 
     std::default_random_engine generator;
-    std::normal_distribution<long double> distribution(0, 1.0);
+    std::normal_distribution<long double> distribution(0, 1e-4);
 
     //init with random values
     for(int i = 0;i < n;i++) {
         for(int j = 0;j < 2;j++) {
-            // Y(i, j) = distribution(generator);
-            Y(i, j) = (i * j / 1000. + i) / 100.;
+            Y(i, j) = distribution(generator);
             dY(i, j) = 0.0;
             iY(i, j) = 0.0;
             gains(i, j) = 1.0;
@@ -270,8 +272,6 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
             }
         }
 
-      
-
         // Compute gradient
         MATRIX PQ = P - Q;
         for(int i = 0;i < n;i++) {
@@ -307,13 +307,10 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
         // # Compute current value of cost function
         if((iter + 1) % 10 == 0) {
             long double C = 0.0;
-            // std::cout << Y << "\n";
-            // char a;
-            // std::cin >> a;
+
             for(int i = 0; i < n; i++){
                 for(int j = 0; j < n; j++){
                     if(i != j) {
-                        // std::cout << "P[" << i << "][" << j << "] = " << P(i, j) << " Q: " << Q(i, j) << std::endl; 
                         C += P(i, j) * log(P(i, j) / Q(i, j));
                     }
                 }
@@ -399,7 +396,7 @@ MATRIX readInData(std::string csv_filename){
 
 int main() {
 
-    MATRIX points = readInData("test_mnist.csv");
+    MATRIX points = readInData("tsne_data.csv");
     MATRIX result = refitTSNE(points, 500, 20, 0.1);
 
     for(int i = 0;i < result.size1();i++) {
