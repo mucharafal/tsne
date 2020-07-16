@@ -14,6 +14,8 @@
 #include <boost/numeric/ublas/io.hpp>
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/range/algorithm.hpp>
+#include <chrono> 
+using namespace std::chrono; 
 #define DELTA 0.00001
 #define MATRIX matrix<long double>
 #define ROW matrix_row<MATRIX>
@@ -23,6 +25,8 @@
 #define NDEBUG 1
 #define BOOST_UBLAS_USE_LONG_DOUBLE 1
 using namespace boost::numeric::ublas;
+
+auto app_start = high_resolution_clock::now(); 
 
 MATRIX tile(VECTOR row, int numberOfRows) {
     MATRIX res(numberOfRows, row.size());
@@ -172,6 +176,12 @@ MATRIX x2p(MATRIX X, long double tol /*1e-5*/, long double perplexity){
                 P(i, j) = res.P(index);
             }
         }
+
+        if((i + 1) % 500 == 0) {
+
+            auto duration = duration_cast<seconds>(high_resolution_clock::now() - app_start);
+            std::cerr << "Processed " << i + 1 << " of " << n << "time from app start: " << duration.count() << " seconds\n";
+        }
     }
 
     long double sumBeta = 0.0;
@@ -180,7 +190,7 @@ MATRIX x2p(MATRIX X, long double tol /*1e-5*/, long double perplexity){
         sumBeta += sqrt(1.0 / beta(i));
     }
 
-    std::cout<<"Mean value of sigma: "<< sumBeta/n << std::endl;
+    std::cerr<<"Mean value of sigma: "<< sumBeta/n << std::endl;
 
     return P;
 }
@@ -191,7 +201,7 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
     int n = points.size1();
     int no_dims = 2;  
 
-    int max_iter = 1000;
+    int max_iter = stepsNumber;
     long double initial_momentum = 0.5;
     long double final_momentum = 0.8;
     int eta = 500;
@@ -236,6 +246,9 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
             P(i, j) = std::max(P(i, j), (long double)1e-12);
         }
     }
+
+    auto duration = duration_cast<seconds>(high_resolution_clock::now() - app_start);
+    std::cerr << "P calculated; time from start app: " << duration.count() << " seconds\n";
 
     for(int iter = 0; iter < max_iter; iter++){
         VECTOR sum_Y(n);
@@ -297,9 +310,7 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
             }
         }
 
-        iY = element_prod(MATRIX_OF(Y.size1(), Y.size2(), momentum), iY) - 
-            element_prod(MATRIX_OF(gains.size1(), gains.size2(), eta), 
-                element_prod(gains, dY));  
+        iY = momentum * iY - eta * element_prod(gains, dY);  
 
         Y = Y + iY;
         Y = Y - tile(mean(Y, 0), n);
@@ -318,12 +329,16 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
             if(C < 1e-5) {
                 return Y;
             }
-            std::cout << "Iteration " << iter + 1 << ": error is " << C << std::endl;
+            auto duration = duration_cast<seconds>(high_resolution_clock::now() - app_start);
+            std::cerr << "Iteration " << iter + 1 << ": error is " << C << " time from start app: " << duration.count() << " seconds\n";
         }
         // # Stop lying about P-values
         if(iter == 100) {
             P = P / 4.;
         }
+
+        auto duration = duration_cast<seconds>(high_resolution_clock::now() - app_start);
+        std::cerr << "After iteration: " << iter << "; time from start app: " << duration.count() << " seconds" << std::endl;
     }
 
     return Y;
@@ -393,11 +408,31 @@ MATRIX readInData(std::string csv_filename){
     return result;
 }
 
+void normalize(MATRIX &a) {
+    long double minValue = __DBL_MAX__;
+    long double maxValue = -__DBL_MAX__;
+    int n = a.size1(), d = a.size2();
+    for(int i = 0;i < n;i++) {
+        for(int j = 0;j < d;j++) {
+            minValue = std::min(a(i, j), minValue);
+            maxValue = std::max(a(i, j), maxValue);
+        }
+    }
+
+    long double scale = maxValue - minValue;
+
+    for(int i = 0;i < n;i++) {
+        for(int j = 0;j < d;j++) {
+            a(i, j) = (a(i, j) - minValue) / scale;
+        }
+    }
+}
 
 int main() {
 
-    MATRIX points = readInData("tsne_data.csv");
-    MATRIX result = refitTSNE(points, 500, 20, 0.1);
+    MATRIX points = readInData("mnist_normal_5k_pca30.csv");
+    normalize(points);
+    MATRIX result = refitTSNE(points, 500, 50, 0.1);
 
 
     for(int i = 0;i < result.size1();i++) {
