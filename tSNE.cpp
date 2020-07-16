@@ -24,7 +24,7 @@
 #define BOOST_UBLAS_USE_LONG_DOUBLE 1
 using namespace boost::numeric::ublas;
 
-MATRIX tile(VECTOR row, int numberOfRows) {
+MATRIX tile(VECTOR &row, int numberOfRows) {
     MATRIX res(numberOfRows, row.size());
     for(int i = 0;i < numberOfRows;i++) {
         ROW(res, i) = row;
@@ -32,7 +32,7 @@ MATRIX tile(VECTOR row, int numberOfRows) {
     return res;
 }
 
-VECTOR sum(MATRIX input_m, int axis) {
+VECTOR sum(MATRIX &input_m, int axis) {
     MATRIX m = input_m;
     if(axis == 1) {
         m = trans(input_m);
@@ -45,7 +45,7 @@ VECTOR sum(MATRIX input_m, int axis) {
     return out;
 }
 
-VECTOR mean(MATRIX input_m, int axis) {
+VECTOR mean(MATRIX &input_m, int axis) {
     VECTOR sums = sum(input_m, axis);
     if(axis == 1) {
         return sums / input_m.size2();
@@ -297,9 +297,7 @@ MATRIX refitTSNE(MATRIX points, int stepsNumber, long double perplexity, long do
             }
         }
 
-        iY = element_prod(MATRIX_OF(Y.size1(), Y.size2(), momentum), iY) - 
-            element_prod(MATRIX_OF(gains.size1(), gains.size2(), eta), 
-                element_prod(gains, dY));  
+        iY = momentum * iY - eta * element_prod(gains, dY);  
 
         Y = Y + iY;
         Y = Y - tile(mean(Y, 0), n);
@@ -393,10 +391,29 @@ MATRIX readInData(std::string csv_filename){
     return result;
 }
 
+void normalize(MATRIX &a) {
+    long double minValue = __DBL_MAX__;
+    long double maxValue = -__DBL_MAX__;
+    int n = a.size1(), d = a.size2();
+    for(int i = 0;i < n;i++) {
+        for(int j = 0;j < d;j++) {
+            minValue = std::min(a(i, j), minValue);
+            maxValue = std::max(a(i, j), maxValue);
+        }
+    }
+
+    long double middleValue = (minValue + maxValue) / 2;
+    for(int i = 0;i < n;i++) {
+        for(int j = 0;j < d;j++) {
+            a(i, j) = a(i, j) > middleValue ? 1 : 0;
+        }
+    }
+}
 
 int main() {
 
     MATRIX points = readInData("tsne_data.csv");
+    normalize(points);
     MATRIX result = refitTSNE(points, 500, 20, 0.1);
 
 
